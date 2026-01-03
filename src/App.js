@@ -7,6 +7,9 @@ import "@aws-amplify/ui-react/styles.css";
 export default function App() {
   const webcamRef = useRef(null);
   const [captured, setCaptured] = useState(null);
+  const [facingMode, setFacingMode] = useState("environment"); //'背面カメラ切り替え追加'
+  const videoConstraints = { facingMode: { ideal: facingMode } };
+
 
   const capture = () => {
     const imageSrc = webcamRef.current?.getScreenshot();
@@ -36,12 +39,24 @@ export default function App() {
             ref={webcamRef}
             audio={false}
             screenshotFormat="image/jpeg"
+            videoConstraints={videoConstraints}   // 追加
             style={{ width: 640, maxWidth: "100%", background: "black" }}
           />
-
-          <div style={{ marginTop: 12 }}>
+        
+          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
             <button onClick={capture}>撮影</button>
+
+            <button
+              onClick={() =>
+                setFacingMode((prev) =>
+                  prev === "environment" ? "user" : "environment"
+                )
+              }
+            >
+              カメラ切替（{facingMode === "environment" ? "背面" : "前面"}）
+            </button>
           </div>
+          
 
           {captured && (
             <div style={{ marginTop: 16 }}>
