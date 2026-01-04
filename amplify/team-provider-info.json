@@ -14,6 +14,9 @@
     "categories": {
       "auth": {
         "camerasample32dd4c67": {}
+      },
+      "storage": {
+        "cameraImages": {}
       }
     }
   }

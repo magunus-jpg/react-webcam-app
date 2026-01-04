@@ -1,0 +1,12 @@
+{
+  "resourceName": "cameraImages",
+  "policyUUID": "d4c76024",
+  "bucketName": "camera-images",
+  "storageAccess": "auth",
+  "guestAccess": [],
+  "authAccess": [
+    "CREATE_AND_UPDATE"
+  ],
+  "triggerFunction": "NONE",
+  "groupAccess": {}
+}

@@ -3,6 +3,7 @@ import Webcam from "react-webcam";
 
 import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
+import { uploadData } from "aws-amplify/storage";// upload追加
 
 const toBlob = async (dataUrl) => {
   // data:image/jpeg;base64,... -> Blob に変換
@@ -39,12 +40,32 @@ export default function App() {
   };
 
   // ★ここを次にS3アップロードに差し替える
+  // const uploadImage = async (blob) => {
+  //   // ダミー：2秒待つだけ
+  //   await new Promise((r) => setTimeout(r, 2000));
+  //   // 失敗テストしたい場合は下の行を有効化
+  //   // throw new Error("アップロードに失敗しました（ダミー）");
+  // };
+
+
+
   const uploadImage = async (blob) => {
-    // ダミー：2秒待つだけ
-    await new Promise((r) => setTimeout(r, 2000));
-    // 失敗テストしたい場合は下の行を有効化
-    // throw new Error("アップロードに失敗しました（ダミー）");
+    const ext = blob.type === "image/png" ? "png" : "jpg";
+    const filename = `camera_${Date.now()}.${ext}`;
+
+    const result = await uploadData({
+      key: filename, // ★ここを key に
+      data: blob,
+      options: {
+        accessLevel: "protected",
+        contentType: blob.type || "image/jpeg",
+      },
+    }).result;
+
+    console.log("uploaded:", result);
   };
+
+
 
   const onUpload = async () => {
     if (!imageSrc) return;
