@@ -4,6 +4,15 @@ import Webcam from "react-webcam";
 import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
 import { uploadData } from "aws-amplify/storage";// upload追加
+//import { getCurrentUser } from "aws-amplify/auth";
+import { fetchAuthSession } from "aws-amplify/auth";
+
+
+
+const getIdentityId = async () => {
+  const session = await fetchAuthSession();
+  return session.identityId;
+};
 
 const toBlob = async (dataUrl) => {
   // data:image/jpeg;base64,... -> Blob に変換
@@ -13,11 +22,15 @@ const toBlob = async (dataUrl) => {
 
 export default function App() {
   const webcamRef = useRef(null);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [answer, setAnswer] = useState("");
 
+  const [analyzing, setAnalyzing] = useState(false);
   const [mode, setMode] = useState("camera"); // "camera" | "preview" | "uploading" | "success" | "error"
   const [facingMode, setFacingMode] = useState("environment"); // "user" or "environment"
   const [imageSrc, setImageSrc] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [uploadedKey, setUploadedKey] = useState(null);
 
   const videoConstraints = { facingMode: { ideal: facingMode } };
 
@@ -31,6 +44,7 @@ export default function App() {
     }
     setImageSrc(src);
     setMode("preview");
+  
   }, []);
 
   const retake = () => {
@@ -49,12 +63,28 @@ export default function App() {
 
 
 
+  // const uploadImage = async (blob) => {
+  //   const ext = blob.type === "image/png" ? "png" : "jpg";
+  //   const filename = `camera_${Date.now()}.${ext}`;
+
+  //   const result = await uploadData({
+  //     key: filename, // ★ここを key に
+  //     data: blob,
+  //     options: {
+  //       accessLevel: "protected",
+  //       contentType: blob.type || "image/jpeg",
+  //     },
+  //   }).result;
+
+  //   console.log("uploaded:", result);
+  // };
+
   const uploadImage = async (blob) => {
     const ext = blob.type === "image/png" ? "png" : "jpg";
     const filename = `camera_${Date.now()}.${ext}`;
 
     const result = await uploadData({
-      key: filename, // ★ここを key に
+      key: filename,
       data: blob,
       options: {
         accessLevel: "protected",
@@ -62,9 +92,13 @@ export default function App() {
       },
     }).result;
 
+    // ★ここが重要
+    // Amplify Storage は「key=filename」を返す
+    // Lambda には「protected/filename」を渡す
+    setUploadedKey(`protected/${filename}`);
+
     console.log("uploaded:", result);
   };
-
 
 
   const onUpload = async () => {
@@ -81,6 +115,46 @@ export default function App() {
       setMode("error");
     }
   };
+
+  const analyzeImage = async () => {
+  setAnalyzing(true);
+  setErrorMessage("");
+
+  try {
+    const identityId = await getIdentityId();
+
+    const res = await fetch(
+      "https://mumvq5zd2swl2n5aupgocrp6ve0bprgh.lambda-url.ap-northeast-1.on.aws/",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageKey: uploadedKey,
+          identityId: identityId,
+        }),
+      }
+    );
+
+    const data = await res.json();
+    console.log("Lambda response:", data);
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? `Lambda error: ${res.status}`);
+    }
+
+    setAnalysisResult(data.results ?? []);
+    setAnswer(data.answer ?? "");
+
+  } catch (e) {
+    setErrorMessage(e?.message ?? "解析に失敗しました。");
+    setMode("error");
+  } finally {
+    setAnalyzing(false);
+  }
+};
+
+
+
 
   const toggleCamera = () => {
     setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
@@ -118,6 +192,29 @@ export default function App() {
               </div>
             )}
 
+          {analysisResult && (
+            <div style={{ marginTop: 12, maxWidth: 520 }}>
+              <h3>解析結果</h3>
+              {analysisResult.map((r, i) => (
+                <div key={i} style={{ marginBottom: 10 }}>
+                  <b>候補 {i + 1}</b>（score: {r.score.toFixed(2)}）
+                  <pre style={{ whiteSpace: "pre-wrap" }}>{r.text}</pre>
+                </div>
+              ))}
+            </div>
+          )}
+          {answer && (
+            <div style={{ marginTop: 16 }}>
+              <h3>LLMの回答</h3>
+              <pre style={{ whiteSpace: "pre-wrap" }}>
+                {answer}
+              </pre>
+            </div>
+          )}
+
+
+
+
             {(mode === "preview" || mode === "uploading" || mode === "success" || mode === "error") && (
               <div style={styles.stage}>
                 {imageSrc ? <img src={imageSrc} alt="captured" style={styles.media} /> : null}
@@ -128,11 +225,7 @@ export default function App() {
                   </div>
                 )}
 
-                {mode === "success" && (
-                  <div style={styles.overlay}>
-                    <div style={styles.overlayCard}>アップロードしました ✅</div>
-                  </div>
-                )}
+
 
                 {mode === "error" && errorMessage && (
                   <div style={styles.overlay}>
@@ -161,6 +254,20 @@ export default function App() {
                 </button>
               </div>
             )}
+            {mode === "success" && (
+              <div style={styles.footerRow}>
+                <button style={styles.secondaryBtn} onClick={retake}>
+                  もう一枚撮る
+                </button>
+                <button
+                  style={styles.primaryBtn}
+                  onClick={analyzeImage}
+                  disabled={analyzing || !uploadedKey}
+                >
+                  {analyzing ? "解析中..." : "解析する"}
+                </button>
+              </div>
+            )}
 
             {mode === "uploading" && (
               <button style={styles.primaryBtn} disabled>
@@ -168,7 +275,7 @@ export default function App() {
               </button>
             )}
 
-            {(mode === "success" || mode === "error") && (
+            {(mode === "error") && (
               <div style={styles.footerRow}>
                 <button style={styles.secondaryBtn} onClick={retake}>
                   もう一枚撮る
@@ -190,7 +297,10 @@ export default function App() {
       )}
     </Authenticator>
   );
+
+
 }
+
 
 const styles = {
   app: {
@@ -224,6 +334,8 @@ const styles = {
   main: {
     flex: 1,
     display: "flex",
+    flexDirection: "column", // ★追加
+    gap: 12,                 // ★追加
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
